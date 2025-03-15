@@ -24,38 +24,43 @@ const Movie = mongoose.model('vjcollection', movieSchema);
 // Initialize Telegram Bot (polling disabled since indexing is not needed)
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: false });
 
-// In-memory cache for OMDb details
-const omdbCache = {};
+// In-memory cache for TMDb details
+const tmdbCache = {};
 
-// Helper function to fetch OMDb details using movie title (file_name)
-async function getOMDbDetails(title) {
-  const omdbKey = process.env.OMDB_API_KEY;
-  if (!omdbKey) return null;
+// Helper function to fetch TMDb details using movie title (file_name)
+async function getTMDbDetails(title) {
+  const tmdbKey = process.env.TMDB_API_KEY;
+  if (!tmdbKey) return null;
+
   // Check cache first
-  if (omdbCache[title]) return omdbCache[title];
+  if (tmdbCache[title]) return tmdbCache[title];
   
   try {
-    const response = await axios.get('http://www.omdbapi.com/', {
-      params: { apikey: omdbKey, t: title }
+    // Search TMDb for the movie by title
+    const response = await axios.get('https://api.themoviedb.org/3/search/movie', {
+      params: { api_key: tmdbKey, query: title }
     });
-    if (response.data && response.data.Response === "True") {
-      omdbCache[title] = response.data;
-      return response.data;
+    
+    if (response.data && response.data.results && response.data.results.length > 0) {
+      const movieData = response.data.results[0];
+      // Cache the result
+      tmdbCache[title] = movieData;
+      return movieData;
     }
     return null;
   } catch (err) {
-    console.error("Error fetching OMDb data:", err);
+    console.error("Error fetching TMDb data:", err);
     return null;
   }
 }
 
-// Endpoint: Get all movies with OMDb details
+// Endpoint: Get all movies with TMDb details
 app.get('/movies', async (req, res) => {
   try {
     const movies = await Movie.find({});
     const moviesWithDetails = await Promise.all(movies.map(async (movie) => {
-      const omdbData = await getOMDbDetails(movie.file_name);
-      return { ...movie.toObject(), omdb: omdbData };
+      const tmdbData = await getTMDbDetails(movie.file_name);
+      return { ...movie.toObject(), tmdb: tmdbData };
     }));
     res.json(moviesWithDetails);
   } catch (err) {
@@ -70,8 +75,8 @@ app.get('/search', async (req, res) => {
     const q = req.query.q || "";
     const movies = await Movie.find({ file_name: { $regex: q, $options: 'i' } });
     const moviesWithDetails = await Promise.all(movies.map(async (movie) => {
-      const omdbData = await getOMDbDetails(movie.file_name);
-      return { ...movie.toObject(), omdb: omdbData };
+      const tmdbData = await getTMDbDetails(movie.file_name);
+      return { ...movie.toObject(), tmdb: tmdbData };
     }));
     res.json(moviesWithDetails);
   } catch (err) {
@@ -80,13 +85,13 @@ app.get('/search', async (req, res) => {
   }
 });
 
-// Endpoint: Get movie details by ID (with OMDb details)
+// Endpoint: Get movie details by ID (with TMDb details)
 app.get('/movie/:id', async (req, res) => {
   try {
     const movie = await Movie.findById(req.params.id);
     if (!movie) return res.status(404).json({ error: 'Movie not found' });
-    const omdbData = await getOMDbDetails(movie.file_name);
-    res.json({ ...movie.toObject(), omdb: omdbData });
+    const tmdbData = await getTMDbDetails(movie.file_name);
+    res.json({ ...movie.toObject(), tmdb: tmdbData });
   } catch (err) {
     console.error('Error fetching movie details:', err);
     res.status(500).json({ error: 'Failed to fetch movie details' });
