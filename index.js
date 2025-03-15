@@ -32,21 +32,29 @@ async function getTMDbDetails(title) {
   const tmdbKey = process.env.TMDB_API_KEY;
   if (!tmdbKey) return null;
 
-  // Check cache first
   if (tmdbCache[title]) return tmdbCache[title];
-  
+
+  // Clean up the title (remove resolution, format, episode numbers, etc.)
+  const cleanedTitle = title
+    .replace(/\b(1080p|720p|480p|NF|WEB DL|DDP\d+\.\d+|AV1|Saon|mkv|mp4|S\d+E\d+|Episode \d+)\b/gi, "")
+    .replace(/[\.\-_]/g, " ")
+    .trim();
+
+  console.log(`Searching TMDb for cleaned title: "${cleanedTitle}"`);
+
   try {
-    // Search TMDb for the movie by title
     const response = await axios.get('https://api.themoviedb.org/3/search/movie', {
-      params: { api_key: tmdbKey, query: title }
+      params: { api_key: tmdbKey, query: cleanedTitle }
     });
-    
+
+    console.log(`TMDb search for "${cleanedTitle}":`, response.data);
+
     if (response.data && response.data.results && response.data.results.length > 0) {
       const movieData = response.data.results[0];
-      // Cache the result
       tmdbCache[title] = movieData;
       return movieData;
     }
+
     return null;
   } catch (err) {
     console.error("Error fetching TMDb data:", err);
@@ -123,6 +131,7 @@ app.get('/stream/:id', async (req, res) => {
   }
 });
 
+// Start the server
 app.listen(port, () => {
   console.log(`🚀 Server running at http://localhost:${port}`);
 });
